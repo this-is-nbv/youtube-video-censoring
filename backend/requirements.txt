@@ -1,0 +1,26 @@
+# --- Web framework ---
+fastapi
+uvicorn
+
+# --- Core ML / Audio ---
+torch
+torchaudio
+transformers
+openai-whisper
+librosa
+numpy
+scikit-learn
+
+# --- Audio / DSP dependencies ---
+resampy
+soundfile
+
+# --- Video processing ---
+moviepy
+opencv-python
+imageio-ffmpeg
+
+# --- Utilities ---
+tqdm
+
+detoxify
