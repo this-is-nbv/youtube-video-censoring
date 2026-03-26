@@ -1,26 +1,56 @@
-# --- Web framework ---
-fastapi
-uvicorn
+# -------------------------------
+# Web Framework
+# -------------------------------
 
-# --- Core ML / Audio ---
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# -------------------------------
+# Core ML / GPU
+# -------------------------------
+
 torch
 torchaudio
 transformers
-openai-whisper
-librosa
-numpy
 scikit-learn
+numpy
+scipy
 
-# --- Audio / DSP dependencies ---
-resampy
+# -------------------------------
+# Faster Whisper (GPU optimized)
+# -------------------------------
+
+faster-whisper
+ctranslate2
+
+# -------------------------------
+# Audio Processing
+# -------------------------------
+
+librosa
 soundfile
+resampy
 
-# --- Video processing ---
+# -------------------------------
+# Video / Download
+# -------------------------------
+
+yt-dlp
 moviepy
 opencv-python
 imageio-ffmpeg
+ffmpeg-python
 
-# --- Utilities ---
-tqdm
+# -------------------------------
+# NLP / Toxicity
+# -------------------------------
 
 detoxify
+
+# -------------------------------
+# Utilities
+# -------------------------------
+
+tqdm

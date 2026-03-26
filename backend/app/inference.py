@@ -7,28 +7,47 @@ from app.audio import extract_hlla, extract_dhla, combine_audio_features
 from app.transcript import extract_transcript
 from app.youtube.downloader import download_audio
 
+# --------------------------------------------------
+# DEVICE CONFIGURATION
+# --------------------------------------------------
+
+device = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
+)
+
+print("Running on:", device)
+
 LABELS = ["SAFE", "VIOLENCE", "SEXUAL"]
 
-# -------------------------------
-# Load models once
-# -------------------------------
+# --------------------------------------------------
+# LOAD MODELS (ONCE)
+# --------------------------------------------------
 
-model = MFusTSVD_TA()
+model = MFusTSVD_TA().to(device)
 model.eval()
 
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-bert = BertModel.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(
+    "bert-base-uncased"
+)
+
+bert = BertModel.from_pretrained(
+    "bert-base-uncased"
+).to(device)
+
 bert.eval()
 
-toxicity_model = Detoxify("original")
+toxicity_model = Detoxify(
+    "original",
+    device=device
+)
 
-# -------------------------------
-# Always censor words (kids safe)
-# -------------------------------
+# --------------------------------------------------
+# ALWAYS CENSOR WORDS
+# --------------------------------------------------
 
 ALWAYS_CENSOR = {
-    "fuck","fucking","fucker",
-    "shit","shitty",
+    "fuck", "fucking", "fucker",
+    "shit", "shitty",
     "bitch",
     "porn",
     "sex",
@@ -39,16 +58,20 @@ ALWAYS_CENSOR = {
     "jerk"
 }
 
-# -------------------------------
-# Context-based offensive roots
-# -------------------------------
+# --------------------------------------------------
+# CONTEXT ROOTS
+# --------------------------------------------------
 
 CONTEXT_ROOTS = [
-    "kill","murder","shoot","stab","attack",
-    "choke","strangl","beat","punch",
-    "idiot","moron","racist","slut","whore",
-    "hate","loser","stupid","dumb","jerk"
+    "kill", "murder", "shoot", "attack",
+    "choke", "strangl", "beat", "punch",
+    "idiot", "moron", "racist", "slut", "whore",
+    "hate", "loser", "stupid", "dumb", "jerk"
 ]
+
+# --------------------------------------------------
+# OFFENSIVE WORD CHECK
+# --------------------------------------------------
 
 def is_offensive(word):
 
@@ -62,10 +85,9 @@ def is_offensive(word):
 
     return False
 
-
-# -------------------------------
-# Extract word timestamps
-# -------------------------------
+# --------------------------------------------------
+# WORD TIMESTAMPS
+# --------------------------------------------------
 
 def extract_word_timings(result):
 
@@ -84,10 +106,9 @@ def extract_word_timings(result):
 
     return words
 
-
-# -------------------------------
-# Build sentence windows
-# -------------------------------
+# --------------------------------------------------
+# SENTENCE WINDOWS
+# --------------------------------------------------
 
 def build_sentences(transcript):
 
@@ -103,10 +124,9 @@ def build_sentences(transcript):
 
     return sentences
 
-
-# -------------------------------
-# Context-aware profanity detection
-# -------------------------------
+# --------------------------------------------------
+# PROFANITY DETECTION
+# --------------------------------------------------
 
 def detect_profanity(sentences, words):
 
@@ -114,9 +134,7 @@ def detect_profanity(sentences, words):
     profane_words = set()
     seen = set()
 
-    # --------------------------
-    # 1️⃣ Always censor explicit words
-    # --------------------------
+    # Always censor explicit words
 
     for w in words:
 
@@ -127,21 +145,23 @@ def detect_profanity(sentences, words):
             key = (w["start"], w["end"])
 
             if key not in seen:
+
                 profanity_windows.append({
                     "start": w["start"],
                     "end": w["end"]
                 })
+
                 seen.add(key)
 
             profane_words.add(clean)
 
-    # --------------------------
-    # 2️⃣ NLP context detection
-    # --------------------------
+    # Context detection (NLP)
 
     for s in sentences:
 
-        scores = toxicity_model.predict(s["text"])
+        scores = toxicity_model.predict(
+            s["text"]
+        )
 
         toxicity = scores["toxicity"]
         obscene = scores["obscene"]
@@ -161,69 +181,122 @@ def detect_profanity(sentences, words):
 
             for w in words:
 
-                if s["start"] <= w["start"] <= s["end"]:
+                if (
+                    s["start"]
+                    <= w["start"]
+                    <= s["end"]
+                ):
 
                     clean = w["word"]
 
                     if is_offensive(clean):
 
-                        key = (w["start"], w["end"])
+                        key = (
+                            w["start"],
+                            w["end"]
+                        )
 
                         if key not in seen:
+
                             profanity_windows.append({
                                 "start": w["start"],
                                 "end": w["end"]
                             })
+
                             seen.add(key)
 
                         profane_words.add(clean)
 
     return profanity_windows, list(profane_words)
 
-
-# -------------------------------
-# Main inference pipeline
-# -------------------------------
+# --------------------------------------------------
+# MAIN PIPELINE (SEQUENTIAL VERSION)
+# --------------------------------------------------
 
 def run_inference(video_id: str):
 
-    # 1️⃣ Download audio
+    print("Starting analysis:", video_id)
+
+    # 1 Download audio
+
     audio_path = download_audio(video_id)
 
-    # 2️⃣ Whisper transcription
-    transcript = extract_transcript(audio_path)
+    # 2 Transcription
 
-    # 3️⃣ Extract word timestamps
-    words = extract_word_timings(transcript)
+    transcript = extract_transcript(
+        audio_path
+    )
 
-    # 4️⃣ Sentence windows
-    sentences = build_sentences(transcript)
+    # 3 Words
 
-    # 5️⃣ Profanity detection
-    profanity_windows, profane_words = detect_profanity(sentences, words)
+    words = extract_word_timings(
+        transcript
+    )
 
-    # 6️⃣ Text features for MFusTSVD
+    # 4 Sentences
+
+    sentences = build_sentences(
+        transcript
+    )
+
+    # 5 Profanity detection
+
+    profanity_windows, profane_words = detect_profanity(
+        sentences,
+        words
+    )
+
+    # 6 TEXT FEATURES
+
     text = transcript["text"]
 
-    tokens = tokenizer(text, return_tensors="pt", truncation=True)
+    tokens = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True
+    )
+
+    tokens = {
+        k: v.to(device)
+        for k, v in tokens.items()
+    }
 
     with torch.no_grad():
-        text_feat = bert(**tokens).last_hidden_state
 
-    # 7️⃣ Audio features
-    hlla = extract_hlla(audio_path)
-    dhla = extract_dhla(audio_path)
-    audio_feat = combine_audio_features(hlla, dhla)
+        text_feat = bert(
+            **tokens
+        ).last_hidden_state
 
-    # 8️⃣ MFusTSVD inference
+    # 7 AUDIO FEATURES
+
+    hlla = extract_hlla(
+        audio_path
+    )
+
+    dhla = extract_dhla(
+        audio_path
+    )
+
+    audio_feat = combine_audio_features(
+        hlla,
+        dhla
+    ).to(device)
+
+    # 8 MODEL INFERENCE
+
     with torch.no_grad():
-        probs = model(text_feat, audio_feat)
 
-    label = LABELS[probs.argmax(dim=1).item()]
+        probs = model(
+            text_feat,
+            audio_feat
+        )
 
-    print(f"🔍 MFusTSVD-TA Prediction for {video_id}: {label}")
-    print("🚫 Profanity windows:", profanity_windows)
-    print("🚫 Profane words:", profane_words)
+    label = LABELS[
+        probs.argmax(dim=1).item()
+    ]
+
+    print("Prediction:", label)
+    print("Profanity windows:", profanity_windows)
 
     return {
         "label": label,

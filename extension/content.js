@@ -3,6 +3,7 @@ console.log("✅ Content script injected");
 // -------------------------------
 // Helpers
 // -------------------------------
+
 function getVideo() {
   return document.querySelector("video");
 }
@@ -19,20 +20,25 @@ function isAdPlaying() {
 // -------------------------------
 // Overlay UI
 // -------------------------------
+
 let overlay = null;
 
 function showOverlay() {
+
   if (overlay || isAdPlaying()) return;
 
   overlay = document.createElement("div");
-  overlay.innerText = "🔎 Censoring content… Please wait";
+
+  overlay.innerText =
+    "🔎 Censoring content… Please wait";
 
   overlay.style.position = "fixed";
   overlay.style.top = "0";
   overlay.style.left = "0";
   overlay.style.width = "100vw";
   overlay.style.height = "100vh";
-  overlay.style.background = "rgba(0,0,0,0.85)";
+  overlay.style.background =
+    "rgba(0,0,0,0.85)";
   overlay.style.color = "#fff";
   overlay.style.fontSize = "24px";
   overlay.style.display = "flex";
@@ -45,43 +51,72 @@ function showOverlay() {
 }
 
 function removeOverlay() {
+
   if (overlay) {
     overlay.remove();
     overlay = null;
   }
+
 }
 
 // -------------------------------
-// Beep sound
+// Beep sound (stable)
 // -------------------------------
+
 let audioCtx = null;
 let oscillator = null;
 
 function startBeep() {
+
   if (oscillator) return;
 
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  oscillator = audioCtx.createOscillator();
+  audioCtx =
+    new (window.AudioContext ||
+      window.webkitAudioContext)();
+
+  oscillator =
+    audioCtx.createOscillator();
+
   oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-  oscillator.connect(audioCtx.destination);
+
+  oscillator.frequency.setValueAtTime(
+    1000,
+    audioCtx.currentTime
+  );
+
+  oscillator.connect(
+    audioCtx.destination
+  );
+
   oscillator.start();
 }
 
 function stopBeep() {
+
   if (!oscillator) return;
 
-  oscillator.stop();
-  oscillator.disconnect();
+  try {
+
+    oscillator.stop();
+    oscillator.disconnect();
+
+  } catch {}
+
   oscillator = null;
 
-  audioCtx.close();
-  audioCtx = null;
+  if (audioCtx) {
+
+    audioCtx.close();
+    audioCtx = null;
+
+  }
+
 }
 
 // -------------------------------
 // Profanity state
 // -------------------------------
+
 let profanityWindows = [];
 let profaneWords = [];
 
@@ -90,20 +125,40 @@ let analysisComplete = false;
 let monitorInterval = null;
 
 // -------------------------------
-// Word masking helper
+// Safe regex escape
 // -------------------------------
-function maskWord(word) {
-  return "*".repeat(word.length);
+
+function escapeRegex(word) {
+
+  return word.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+
 }
 
 // -------------------------------
-// Caption censoring
+// Word masking
 // -------------------------------
+
+function maskWord(word) {
+
+  return "*".repeat(word.length);
+
+}
+
+// -------------------------------
+// Caption censoring (optimized)
+// -------------------------------
+
 function censorCaptions() {
 
   if (!profaneWords.length) return;
 
-  const captions = document.querySelectorAll(".ytp-caption-segment");
+  const captions =
+    document.querySelectorAll(
+      ".ytp-caption-segment"
+    );
 
   captions.forEach(node => {
 
@@ -111,9 +166,20 @@ function censorCaptions() {
 
     profaneWords.forEach(word => {
 
-      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      const safeWord =
+        escapeRegex(word);
 
-      text = text.replace(regex, maskWord(word));
+      const regex =
+        new RegExp(
+          `\\b${safeWord}\\b`,
+          "gi"
+        );
+
+      text =
+        text.replace(
+          regex,
+          maskWord(word)
+        );
 
     });
 
@@ -124,87 +190,144 @@ function censorCaptions() {
 }
 
 // -------------------------------
-// Title censoring
+// Title censoring (safe restore)
 // -------------------------------
+
+let originalTitle = null;
+
 function censorTitle() {
 
   if (!profaneWords.length) return;
 
-  const title = document.querySelector("h1.ytd-watch-metadata");
+  const title =
+    document.querySelector(
+      "h1.ytd-watch-metadata"
+    );
 
   if (!title) return;
 
-  let text = title.textContent;
+  if (!originalTitle) {
+
+    originalTitle =
+      title.textContent;
+
+  }
+
+  let text =
+    originalTitle;
 
   profaneWords.forEach(word => {
 
-    const regex = new RegExp(`\\b${word}\\b`, "gi");
+    const safeWord =
+      escapeRegex(word);
 
-    text = text.replace(regex, maskWord(word));
+    const regex =
+      new RegExp(
+        `\\b${safeWord}\\b`,
+        "gi"
+      );
+
+    text =
+      text.replace(
+        regex,
+        maskWord(word)
+      );
 
   });
 
   title.textContent = text;
+
 }
 
 // -------------------------------
-// Strong pause guard
+// Pause guard
 // -------------------------------
+
 let pauseGuard = null;
 
 function startPauseGuard(video) {
 
-  pauseGuard = setInterval(() => {
+  pauseGuard =
+    setInterval(() => {
 
-    if (!analysisComplete && !isAdPlaying()) {
-      video.pause();
-      video.muted = true;
-    }
+      if (
+        !analysisComplete &&
+        !isAdPlaying()
+      ) {
 
-  }, 100);
+        video.pause();
+        video.muted = true;
+
+      }
+
+    }, 100);
+
 }
 
 function stopPauseGuard() {
+
   clearInterval(pauseGuard);
+
 }
 
 // -------------------------------
-// Profanity monitoring
+// Playback monitor
 // -------------------------------
+
 function monitorPlayback() {
 
   const video = getVideo();
-  if (!video || isAdPlaying()) return;
 
-  const t = video.currentTime;
+  if (!video || isAdPlaying())
+    return;
 
-  const inProfanity = profanityWindows.some(
-    w => t >= w.start && t <= w.end
-  );
+  const t =
+    video.currentTime;
 
-  if (inProfanity && !censorActive) {
+  const inProfanity =
+    profanityWindows.some(
+      w =>
+        t >= w.start &&
+        t <= w.end
+    );
+
+  if (
+    inProfanity &&
+    !censorActive
+  ) {
 
     video.muted = true;
+
     startBeep();
 
     censorActive = true;
+
   }
 
-  if (!inProfanity && censorActive) {
+  if (
+    !inProfanity &&
+    censorActive
+  ) {
 
     video.muted = false;
+
     stopBeep();
 
     censorActive = false;
+
   }
+
 }
 
 // -------------------------------
-// Reset everything for new video
+// Reset state
 // -------------------------------
+
 function resetState() {
 
-  console.log("🔄 Resetting censor state");
+  console.log(
+    "🔄 Resetting censor state"
+  );
 
   profanityWindows = [];
   profaneWords = [];
@@ -212,93 +335,157 @@ function resetState() {
   censorActive = false;
   analysisComplete = false;
 
+  originalTitle = null;
+
   stopBeep();
   stopPauseGuard();
   removeOverlay();
 
   if (monitorInterval) {
-    clearInterval(monitorInterval);
+
+    clearInterval(
+      monitorInterval
+    );
+
     monitorInterval = null;
+
   }
+
 }
 
 // -------------------------------
-// Main analysis flow
+// Main analysis
 // -------------------------------
+
 function initCensoring(videoId) {
 
-  const video = getVideo();
+  const video =
+    getVideo();
+
   if (!video) return;
 
-  console.log("🧠 Analyzing video:", videoId);
+  console.log(
+    "🧠 Analyzing video:",
+    videoId
+  );
 
   resetState();
+
   showOverlay();
+
   startPauseGuard(video);
 
   chrome.runtime.sendMessage(
     {
       type: "ANALYZE_VIDEO",
-      payload: { video_id: videoId }
+      payload: {
+        video_id: videoId
+      }
     },
+
     (response) => {
 
       analysisComplete = true;
 
       stopPauseGuard();
+
       removeOverlay();
 
-      if (!response || !response.success) {
+      if (
+        !response ||
+        !response.success
+      ) {
 
-        console.error("❌ Backend error:", response?.error);
+        console.error(
+          "❌ Backend error:",
+          response?.error
+        );
 
         video.muted = false;
+
         return;
+
       }
 
-      // NEW: get normalized data
-      profanityWindows = response.data.windows || [];
-      profaneWords = response.data.words || [];
+      // supports both response formats
 
-      console.log("🚫 Profanity windows:", profanityWindows);
-      console.log("🚫 Profane words:", profaneWords);
+      profanityWindows =
+        response.data.windows ||
+        response.data.profanity_windows ||
+        [];
 
-      // Apply title censor once
+      profaneWords =
+        response.data.words ||
+        response.data.profane_words ||
+        [];
+
+      console.log(
+        "🚫 Profanity windows:",
+        profanityWindows
+      );
+
+      console.log(
+        "🚫 Profane words:",
+        profaneWords
+      );
+
       censorTitle();
 
       video.muted = false;
+
       video.play();
 
-      monitorInterval = setInterval(() => {
+      monitorInterval =
+        setInterval(() => {
 
-        monitorPlayback();
-        censorCaptions();
+          monitorPlayback();
 
-      }, 100);
+          censorCaptions();
+
+        }, 100);
 
     }
+
   );
+
 }
 
 // -------------------------------
-// Detect video changes (SPA-safe)
+// Detect video changes
 // -------------------------------
+
 let currentVideoId = null;
 
 setInterval(() => {
 
-  const newVideoId = getVideoId();
-  const video = getVideo();
+  const newVideoId =
+    getVideoId();
 
-  if (!video || isAdPlaying()) return;
+  const video =
+    getVideo();
 
-  if (newVideoId && newVideoId !== currentVideoId) {
+  if (
+    !video ||
+    isAdPlaying()
+  ) return;
 
-    console.log("🎬 Video changed:", newVideoId);
+  if (
+    newVideoId &&
+    newVideoId !== currentVideoId
+  ) {
 
-    currentVideoId = newVideoId;
+    console.log(
+      "🎬 Video changed:",
+      newVideoId
+    );
 
-    initCensoring(newVideoId);
+    currentVideoId =
+      newVideoId;
+
+    initCensoring(
+      newVideoId
+    );
+
   }
 
 }, 500);
